@@ -1,0 +1,176 @@
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iostream>
+#include <string>
+#include <windows.h>
+
+#pragma comment(lib, "ws2_32.lib")
+
+#define PORT 8080
+
+int main() {
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    setlocale(LC_ALL, "RU");
+    WSADATA wsaData;
+    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (result != 0) {
+        std::cerr << "WSAStartup failed: " << result << std::endl;
+        return 1;
+    }
+
+    SOCKET connectSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (connectSocket == INVALID_SOCKET) {
+        std::cerr << "socket failed: " << WSAGetLastError() << std::endl;
+        WSACleanup();
+        return 1;
+    }
+
+    sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(PORT);
+    //Вместо INADDR_ANY клиент должен знать конкретный адрес сервера. inet_pton преобразует строку "127.0.0.1" (localhost — тот же компьютер) в бинарный формат IP-адреса, понятный сокетам.
+    inet_pton(AF_INET, "192.168.52.19", &serverAddr.sin_addr);
+
+    //устанавливает соединение с сервером по указанному адресу и порту (в отличие от сервера, который пассивно ждёт через accept).
+    result = connect(connectSocket, (sockaddr*)&serverAddr, sizeof(serverAddr));
+    if (result == SOCKET_ERROR) {
+        std::cerr << "connect failed: " << WSAGetLastError() << std::endl;
+        closesocket(connectSocket);
+        WSACleanup();
+        return 1;
+    }
+    std::string username;
+    std::cout << "Введите имя: ";
+    std::getline(std::cin, username);
+    std::cout << "Подключено к серверу!" << std::endl;
+    //отправить юзер на сервер
+    int resultuser = send(connectSocket, username.c_str(), (int)username.size(), 0);
+    if (resultuser == SOCKET_ERROR) {
+        std::cerr << "send failed: " << WSAGetLastError() << std::endl;  
+    }
+
+    std::string message;
+    while (true) {
+
+        std::cout << "Введите сообщение (или 'exit' для выхода): ";
+        std::getline(std::cin, message);
+
+        if (message == "exit") {
+            break;
+        }
+       
+        int sendResult = send(connectSocket, message.c_str(), (int)message.size(), 0);
+        if (sendResult == SOCKET_ERROR) {
+            std::cerr << "send failed: " << WSAGetLastError() << std::endl;
+            break;
+        }
+        char recvBuffer[512];
+        int bytesReceived = recv(connectSocket, recvBuffer, sizeof(recvBuffer) - 1, 0);
+        if (bytesReceived > 0) {
+            recvBuffer[bytesReceived] = '\0';
+            std::cout << "Ответ сервера: " << recvBuffer << std::endl;
+        }
+        else if (bytesReceived == 0) {
+            std::cout << "Соединение закрыто сервером." << std::endl;
+            break;
+        }
+        else {
+            std::cerr << "recv failed: " << WSAGetLastError() << std::endl;
+            break;
+        }
+    }
+
+    closesocket(connectSocket);
+    WSACleanup();
+
+    return 0;
+}
+
+
+////////server
+#pragma#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iostream>
+#include <string>
+
+#pragma comment(lib, "ws2_32.lib")
+
+#define PORT 8080
+
+int main() {
+    // Инициализация Winsock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed\n";
+        return 1;
+    }
+
+    // Создание сокета
+    SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (serverSocket == INVALID_SOCKET) {
+        std::cerr << "Socket creation failed\n";
+        WSACleanup();
+        return 1;
+    }
+
+    // Настройка адреса
+    sockaddr_in serverAddr{};
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = INADDR_ANY;  // Слушаем на всех интерфейсах
+    serverAddr.sin_port = htons(PORT);
+
+    // Привязка сокета
+    if (bind(serverSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+        std::cerr << "Bind failed\n";
+        closesocket(serverSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    // Прослушивание
+    if (listen(serverSocket, SOMAXCONN) == SOCKET_ERROR) {
+        std::cerr << "Listen failed\n";
+        closesocket(serverSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    std::cout << "Server is listening on port \n" << PORT;
+
+    SOCKET clientSocket = accept(serverSocket, nullptr, nullptr);
+    if (clientSocket == INVALID_SOCKET) {
+        std::cerr << "Accept failed\n";
+        closesocket(serverSocket);
+        WSACleanup();
+        return 1;
+    }
+    std::string username;
+    std::cout << "Client connected!\n";
+
+    char buffer[512] = {};
+    username = buffer;
+    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+    if (bytesReceived > 0) {
+        std::cout << "Клиент: " << buffer << " подключился" << std::endl;
+    }
+    do {
+
+        if (bytesReceived > 0) {
+            std::cout << "Received: " << buffer << std::endl;
+
+            std::string response = "Поучен ответ от сервера: ";
+            response += buffer;
+            send(clientSocket, response.c_str(), static_cast<int>(response.size()), 0);
+        }
+    } while (bytesReceived > 0);
+
+
+    closesocket(clientSocket);
+    closesocket(serverSocket);
+    WSACleanup();
+
+    std::cout << "Server closed.\n";
+    return 0;
+}
